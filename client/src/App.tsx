@@ -6,6 +6,9 @@ import { Login } from "./components/Login.tsx";
 import { Dashboard } from "./components/Dashboard.tsx";
 import { Add } from "./components/Add.tsx";
 import { Update } from "./components/Update.tsx";
+import { CreateTable } from "./components/CreateTable.tsx";
+import { UserManagement } from "./components/UserManagement.tsx";
+import { Profile } from "./components/Profile.tsx";
 
 function App() {
     return (
@@ -15,8 +18,11 @@ function App() {
                 <Route path="login" element={<Login/>}/>
                 <Route path="/signup" element={<SignUp/>}/>
                 <Route path="/dashboard" element={<Dashboard/>}/>
+                <Route path="/create-table" element={<CreateTable/>}/>
                 <Route path="/add-product" element={<Add/>}/>
                 <Route path="/update-product" element={<Update/>}/>
+                <Route path="/users" element={<UserManagement/>}/>
+                <Route path="/profile" element={<Profile/>}/>
             </Routes>
         </BrowserRouter>
     );

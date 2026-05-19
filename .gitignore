@@ -1,1 +1,9 @@
 .idea
+.env
+.DS_Store
+
+# Local AI/work notes
+AI_CONTEXT_AUTHORIZATION.md
+client/AI_NOTES.md
+server/AI_NOTES.md
+yapılcaklar.md

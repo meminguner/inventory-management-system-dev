@@ -6,7 +6,7 @@ export default defineConfig({
     server: {
         proxy: {
             '/api': {
-                target: 'https://imsapi.erkindilekci.me',
+                target: 'http://localhost:8080',
                 changeOrigin: true,
                 rewrite: (path) => path.replace(/^\/api/, '')
             }

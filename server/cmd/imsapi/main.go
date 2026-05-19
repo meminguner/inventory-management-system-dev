@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/joho/godotenv"
-	"github.com/labstack/echo/v4"
 	"ims-intro/pkg/common/app"
 	"ims-intro/pkg/common/postgresql"
 	"ims-intro/pkg/controller"
@@ -12,14 +10,18 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/joho/godotenv"
+	"github.com/labstack/echo/v4"
 )
 
 func main() {
-	envPath := filepath.Join("..", "..", ".env")
+	envPath := filepath.Join("..", ".env")
 	err := godotenv.Load(envPath)
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
+
 
 	ctx := context.Background()
 	configurationManager := app.NewConfigurationManager()
@@ -29,12 +31,17 @@ func main() {
 	userService := service.NewUserService(userRepository)
 	userController := controller.NewUserController(userService)
 
+	dashboardRepository := repository.NewDashboardRepository(dbPool)
+	dashboardService := service.NewDashboardService(dashboardRepository)
+	dashboardController := controller.NewDashboardController(dashboardService)
+
 	productRepository := repository.NewProductRepository(dbPool)
 	productService := service.NewProductService(productRepository)
 	productController := controller.NewProductController(productService)
 
 	e := echo.New()
 	userController.RegisterUserRoutes(e)
+	dashboardController.RegisterDashboardRoutes(e)
 	productController.RegisterProductRoutes(e)
 
 	port := os.Getenv("PORT")

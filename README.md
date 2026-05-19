@@ -33,8 +33,8 @@ This project is a web application designed to optimize the tracking, organizatio
 
 1. **Clone the repository:**
    ```sh
-   git clone https://github.com/erkindilekci/inventory-management-system.git
-   cd yourproject
+   git clone https://github.com/meminguner/inventory-management-system-dev.git
+   cd inventory-management-system-dev
    ```
 
 2. **Backend Setup:**
@@ -42,6 +42,11 @@ This project is a web application designed to optimize the tracking, organizatio
    cd server
    go mod download
    go build -o ./ims cmd/imsapi/main.go
+   ```
+
+   Create a local `.env` file from the example values and replace the placeholders with your own local database credentials and JWT secret:
+   ```sh
+   cp ../.env.example ../.env
    ```
 
 3. **Frontend Setup:**
@@ -66,4 +71,4 @@ This project is a web application designed to optimize the tracking, organizatio
    ```
 
 ## License
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is distributed under the MIT License. The original license notice is retained in [LICENSE](LICENSE).

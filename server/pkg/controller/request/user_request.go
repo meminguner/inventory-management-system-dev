@@ -10,13 +10,17 @@ type LoginRequest struct {
 type SignUpRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
-	Role     string `json:"role"`
+}
+
+type UpdateProfileRequest struct {
+	Username        string `json:"username"`
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
 }
 
 func (request *SignUpRequest) ToDtoModel() dto.UserCreate {
 	return dto.UserCreate{
 		Username: request.Username,
 		Password: request.Password,
-		Role:     request.Role,
 	}
 }

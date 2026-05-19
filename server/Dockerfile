@@ -11,11 +11,8 @@ FROM gcr.io/distroless/base-debian12
 WORKDIR /app
 COPY --from=builder /build/ims ./ims
 
-ENV DB_USER=postgres
-ENV DB_PORT=5434
-ENV DB_PASSWORD=password
-ENV DB_HOST=host.docker.internal
-ENV DB_NAME=ims
-ENV JWT_KEY=ultra-super-secret
+# Configure DB_USER, DB_PORT, DB_PASSWORD, DB_HOST, DB_NAME, and JWT_KEY
+# with environment variables at runtime.
+ENV PORT=8080
 
 CMD ["/app/ims"]
