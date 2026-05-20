@@ -3,15 +3,20 @@ package response
 import "ims-intro/pkg/domain"
 
 type ProductResponse struct {
-	Id          int64    `json:"id"`
-	DashboardId int64    `json:"dashboardId"`
-	Name        string   `json:"name"`
-	Price       float32  `json:"price"`
-	Quantity    int64    `json:"quantity"`
-	Category    []string `json:"category"`
+	Id          int64                  `json:"id"`
+	DashboardId int64                  `json:"dashboardId"`
+	Name        string                 `json:"name"`
+	Price       float32                `json:"price"`
+	Quantity    int64                  `json:"quantity"`
+	Category    []string               `json:"category"`
+	CustomData  map[string]interface{} `json:"customData"`
 }
 
 func toProductResponse(product *domain.Product) *ProductResponse {
+	customData := product.CustomData
+	if customData == nil {
+		customData = map[string]interface{}{}
+	}
 	return &ProductResponse{
 		Id:          product.Id,
 		DashboardId: product.DashboardId,
@@ -19,6 +24,7 @@ func toProductResponse(product *domain.Product) *ProductResponse {
 		Price:       product.Price,
 		Quantity:    product.Quantity,
 		Category:    product.Category,
+		CustomData:  customData,
 	}
 }
 

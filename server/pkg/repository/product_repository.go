@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/labstack/gommon/log"
@@ -12,7 +14,7 @@ import (
 type IProductRepository interface {
 	GetAllProducts(dashboardId int64, userId int64, userRole string) ([]*domain.Product, error)
 	GetProductsByTags(dashboardId int64, tags []string, userId int64, userRole string) ([]*domain.Product, error)
-	SearchTags(prefix string, dashboardId int64, userId int64, userRole string) ([]string, error)
+	SearchTags(prefix string, dashboardId int64, userId int64, userRole string, column string) ([]string, error)
 	AddProduct(product *domain.Product, userId int64, userRole string) error
 	UpdateProductById(updatedProduct *domain.Product, productId int64, userId int64, userRole string) error
 	DeleteProductById(productId int64, userId int64, userRole string) error
@@ -32,13 +34,15 @@ func (repository *ProductRepository) GetAllProducts(dashboardId int64, userId in
 		return nil, err
 	}
 
-	productRows, err := repository.dbPool.Query(ctx, "SELECT id, name, price, quantity, category, dashboard_id FROM products WHERE dashboard_id = $1", dashboardId)
+	rows, err := repository.dbPool.Query(ctx,
+		"SELECT id, name, price, quantity, category, dashboard_id, custom_data FROM products WHERE dashboard_id = $1",
+		dashboardId,
+	)
 	if err != nil {
 		log.Errorf("error while getting all products: %v", err)
 		return nil, err
 	}
-
-	return extractProductsFromRows(productRows)
+	return extractProductsFromRows(rows)
 }
 
 func (repository *ProductRepository) GetProductsByTags(dashboardId int64, tags []string, userId int64, userRole string) ([]*domain.Product, error) {
@@ -47,29 +51,49 @@ func (repository *ProductRepository) GetProductsByTags(dashboardId int64, tags [
 		return nil, err
 	}
 
-	productRows, err := repository.dbPool.Query(ctx, "SELECT id, name, price, quantity, category, dashboard_id FROM products WHERE dashboard_id = $1 AND category @> $2", dashboardId, tags)
+	rows, err := repository.dbPool.Query(ctx,
+		"SELECT id, name, price, quantity, category, dashboard_id, custom_data FROM products WHERE dashboard_id = $1 AND category @> $2",
+		dashboardId, tags,
+	)
 	if err != nil {
-		log.Errorf("error while getting all products by tags: %v", err)
+		log.Errorf("error while getting products by tags: %v", err)
 		return nil, err
 	}
-
-	return extractProductsFromRows(productRows)
+	return extractProductsFromRows(rows)
 }
 
-func (repository *ProductRepository) SearchTags(prefix string, dashboardId int64, userId int64, userRole string) ([]string, error) {
+func (repository *ProductRepository) SearchTags(prefix string, dashboardId int64, userId int64, userRole string, column string) ([]string, error) {
 	ctx := context.Background()
 	if err := repository.ensureDashboardAccess(ctx, dashboardId, userId, userRole); err != nil {
 		return nil, err
 	}
 
-	query := `
-		SELECT DISTINCT tag
-		FROM (SELECT unnest(category) as tag FROM products WHERE dashboard_id = $2) sub
-		WHERE tag ILIKE $1
-		ORDER BY tag ASC
-		LIMIT 10
-	`
-	rows, err := repository.dbPool.Query(ctx, query, prefix+"%", dashboardId)
+	var rows pgx.Rows
+	var err error
+
+	if column == "" {
+		rows, err = repository.dbPool.Query(ctx, `
+			SELECT DISTINCT tag
+			FROM (SELECT unnest(category) AS tag FROM products WHERE dashboard_id = $2) sub
+			WHERE tag ILIKE $1
+			ORDER BY tag ASC
+			LIMIT 10
+		`, prefix+"%", dashboardId)
+	} else {
+		rows, err = repository.dbPool.Query(ctx, `
+			SELECT DISTINCT elem
+			FROM products,
+			     jsonb_array_elements_text(
+			         CASE WHEN jsonb_typeof(custom_data->$3) = 'array'
+			         THEN custom_data->$3
+			         ELSE '[]'::jsonb END
+			     ) AS elem
+			WHERE dashboard_id = $2 AND elem ILIKE $1
+			ORDER BY elem ASC
+			LIMIT 10
+		`, prefix+"%", dashboardId, column)
+	}
+
 	if err != nil {
 		log.Errorf("error while searching tags: %v", err)
 		return nil, err
@@ -93,15 +117,21 @@ func (repository *ProductRepository) AddProduct(product *domain.Product, userId 
 		return err
 	}
 
-	insertStatement := "INSERT INTO products (name, price, quantity, category, dashboard_id) VALUES ($1, $2, $3, $4, $5)"
+	customDataJSONB, err := marshalJSONB(product.CustomData)
+	if err != nil {
+		return err
+	}
 
-	addNewProduct, err := repository.dbPool.Exec(ctx, insertStatement, product.Name, product.Price, product.Quantity, product.Category, product.DashboardId)
+	_, err = repository.dbPool.Exec(ctx,
+		"INSERT INTO products (name, price, quantity, category, dashboard_id, custom_data) VALUES ($1, $2, $3, $4, $5, $6)",
+		product.Name, product.Price, product.Quantity, product.Category, product.DashboardId, customDataJSONB,
+	)
 	if err != nil {
 		log.Errorf("error while adding a new product: %v", err)
 		return err
 	}
 
-	log.Info(fmt.Sprintf("Product added successfully: %v", addNewProduct))
+	log.Info(fmt.Sprintf("Product added successfully for dashboard %d", product.DashboardId))
 	return nil
 }
 
@@ -111,8 +141,15 @@ func (repository *ProductRepository) UpdateProductById(updatedProduct *domain.Pr
 		return err
 	}
 
-	updateStatement := "UPDATE products SET name = $1, price = $2, quantity = $3, category = $4 WHERE id = $5 AND dashboard_id = $6"
-	result, err := repository.dbPool.Exec(ctx, updateStatement, updatedProduct.Name, updatedProduct.Price, updatedProduct.Quantity, updatedProduct.Category, productId, updatedProduct.DashboardId)
+	customDataJSONB, err := marshalJSONB(updatedProduct.CustomData)
+	if err != nil {
+		return err
+	}
+
+	result, err := repository.dbPool.Exec(ctx,
+		"UPDATE products SET name = $1, price = $2, quantity = $3, category = $4, custom_data = $5 WHERE id = $6 AND dashboard_id = $7",
+		updatedProduct.Name, updatedProduct.Price, updatedProduct.Quantity, updatedProduct.Category, customDataJSONB, productId, updatedProduct.DashboardId,
+	)
 	if err != nil {
 		log.Errorf("error while updating product: %v", err)
 		return err
@@ -121,7 +158,7 @@ func (repository *ProductRepository) UpdateProductById(updatedProduct *domain.Pr
 		return fmt.Errorf("product with id %d does not exist in dashboard %d", productId, updatedProduct.DashboardId)
 	}
 
-	log.Info(fmt.Sprintf("Product updated successfully: %v", updatedProduct))
+	log.Info(fmt.Sprintf("Product %d updated successfully", productId))
 	return nil
 }
 
@@ -131,15 +168,11 @@ func (repository *ProductRepository) DeleteProductById(productId int64, userId i
 		return err
 	}
 
-	deleteExec, err := repository.dbPool.Exec(ctx, "DELETE FROM products WHERE id = $1", productId)
+	_, err := repository.dbPool.Exec(ctx, "DELETE FROM products WHERE id = $1", productId)
 	if err != nil {
 		log.Errorf("error while deleting product: %v", err)
 		return err
 	}
-
-	log.Info("Product deleted successfully")
-	log.Info(fmt.Sprintf("%v rows affected", deleteExec.RowsAffected()))
-
 	return nil
 }
 
@@ -160,14 +193,15 @@ func (repository *ProductRepository) ensureDashboardAccess(ctx context.Context, 
 		return nil
 	}
 
-	query := "SELECT EXISTS(SELECT 1 FROM dashboard_permissions WHERE user_id = $1 AND dashboard_id = $2)"
-	if err := repository.dbPool.QueryRow(ctx, query, userId, dashboardId).Scan(&exists); err != nil {
+	if err := repository.dbPool.QueryRow(ctx,
+		"SELECT EXISTS(SELECT 1 FROM dashboard_permissions WHERE user_id = $1 AND dashboard_id = $2)",
+		userId, dashboardId,
+	).Scan(&exists); err != nil {
 		return err
 	}
 	if !exists {
 		return fmt.Errorf("access denied for dashboard %d", dashboardId)
 	}
-
 	return nil
 }
 
@@ -177,22 +211,39 @@ func (repository *ProductRepository) ensureProductAccess(ctx context.Context, pr
 	if err != nil {
 		return fmt.Errorf("product with id %d does not exist", productId)
 	}
-
 	return repository.ensureDashboardAccess(ctx, dashboardId, userId, userRole)
 }
 
-func extractProductsFromRows(productRows pgx.Rows) ([]*domain.Product, error) {
-	defer productRows.Close()
-
+func extractProductsFromRows(rows pgx.Rows) ([]*domain.Product, error) {
+	defer rows.Close()
 	products := make([]*domain.Product, 0)
-
-	for productRows.Next() {
+	for rows.Next() {
 		product := &domain.Product{}
-		if err := productRows.Scan(&product.Id, &product.Name, &product.Price, &product.Quantity, &product.Category, &product.DashboardId); err != nil {
+		var customDataJSONB pgtype.JSONB
+		if err := rows.Scan(&product.Id, &product.Name, &product.Price, &product.Quantity, &product.Category, &product.DashboardId, &customDataJSONB); err != nil {
 			return nil, err
 		}
+		product.CustomData = unmarshalJSONBMap(customDataJSONB)
 		products = append(products, product)
 	}
+	return products, rows.Err()
+}
 
-	return products, productRows.Err()
+func marshalJSONB(v interface{}) (pgtype.JSONB, error) {
+	if v == nil {
+		return pgtype.JSONB{Bytes: []byte("{}"), Status: pgtype.Present}, nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return pgtype.JSONB{}, err
+	}
+	return pgtype.JSONB{Bytes: b, Status: pgtype.Present}, nil
+}
+
+func unmarshalJSONBMap(j pgtype.JSONB) map[string]interface{} {
+	result := map[string]interface{}{}
+	if j.Status == pgtype.Present && len(j.Bytes) > 0 {
+		json.Unmarshal(j.Bytes, &result) //nolint:errcheck
+	}
+	return result
 }

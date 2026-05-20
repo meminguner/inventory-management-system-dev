@@ -76,13 +76,14 @@ func (controller *ProductController) SearchTags(c echo.Context) error {
 	}
 
 	q := c.QueryParam("q")
-	fmt.Printf("\n--- [BACKEND LOG] Öneri İçin Girilen Karakterler: '%s' ---\n\n", q)
+	column := c.QueryParam("column")
+	fmt.Printf("\n--- [BACKEND LOG] Öneri İçin Girilen Karakterler: '%s', Sütun: '%s' ---\n\n", q, column)
 
-	if len(q) < 3 {
+	if len(q) < 1 {
 		return c.JSON(http.StatusOK, []string{})
 	}
 
-	tags, err := controller.productService.SearchTags(q, dashboardId, userClaims.Id, userClaims.Role)
+	tags, err := controller.productService.SearchTags(q, dashboardId, userClaims.Id, userClaims.Role, column)
 	if err != nil {
 		return c.JSON(http.StatusForbidden, response.NewErrorResponse(err.Error()))
 	}
