@@ -1,8 +1,11 @@
-import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useState } from "react";
+import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { GrEdit } from "react-icons/gr";
 import { RiDeleteBin6Line } from "react-icons/ri";
 import Cookies from "js-cookie";
+import { generateProductFields } from "../lib/ai-client";
+import type { ColumnDefinition } from "../lib/ai-client";
+import { DynamicAddForm } from "./Add";
 
 interface Product {
     id: number;
@@ -13,11 +16,6 @@ interface Product {
     customData?: Record<string, unknown>;
 }
 
-interface DashboardColumn {
-    name: string;
-    type: string;
-}
-
 export const Dashboard = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -26,7 +24,7 @@ export const Dashboard = () => {
     const dashboardId = dashboardIdStr ? parseInt(dashboardIdStr, 10) : 0;
     const dashboardName = searchParams.get("name") || "Products";
 
-    const stateColumns: DashboardColumn[] = (location.state as { columnDefinitions?: DashboardColumn[] } | null)?.columnDefinitions ?? [];
+    const stateColumns: ColumnDefinition[] = (location.state as { columnDefinitions?: ColumnDefinition[] } | null)?.columnDefinitions ?? [];
 
     const userRole = (() => {
         try {
@@ -44,10 +42,22 @@ export const Dashboard = () => {
     const [suggestions, setSuggestions] = useState<string[]>([]);
     const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
     const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
-    const [customColumns, setCustomColumns] = useState<DashboardColumn[]>(stateColumns);
+    const [customColumns, setCustomColumns] = useState<ColumnDefinition[]>(stateColumns);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
     const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
     const [deleteError, setDeleteError] = useState<string>("");
+
+    const [showAIModal, setShowAIModal] = useState(false);
+    const [aiStep, setAiStep] = useState<"input" | "form">("input");
+    const [aiImage, setAiImage] = useState<File | null>(null);
+    const [aiImagePreview, setAiImagePreview] = useState<string | null>(null);
+    const [aiDragOver, setAiDragOver] = useState(false);
+    const [aiFileError, setAiFileError] = useState("");
+    const [aiDescription, setAiDescription] = useState("");
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState("");
+    const [aiPrefillValues, setAiPrefillValues] = useState<Record<string, string>>({});
+    const aiFileInputRef = useRef<HTMLInputElement>(null);
 
 
     const fetchProducts = useCallback(async (tag: string = "") => {
@@ -215,6 +225,93 @@ export const Dashboard = () => {
         }
     };
 
+    const resetAIModal = () => {
+        setAiStep("input");
+        setAiImage(null);
+        setAiImagePreview(null);
+        setAiDragOver(false);
+        setAiFileError("");
+        setAiDescription("");
+        setAiLoading(false);
+        setAiError("");
+        setAiPrefillValues({});
+    };
+
+    const applyAIFile = (file: File) => {
+        setAiFileError("");
+        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+            setAiFileError("Sadece JPG, PNG veya WebP dosyası yükleyebilirsiniz.");
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            setAiFileError("Dosya boyutu 10 MB'ı aşamaz.");
+            return;
+        }
+        setAiImage(file);
+        setAiImagePreview(URL.createObjectURL(file));
+    };
+
+    const buildExistingTags = (): Record<string, string[]> => {
+        const result: Record<string, string[]> = {};
+        for (const col of customColumns.filter(c => c.type === "tag")) {
+            const tagSet = new Set<string>();
+            for (const product of products) {
+                const val = product.customData?.[col.name];
+                if (Array.isArray(val)) val.forEach((t: unknown) => { if (typeof t === "string") tagSet.add(t); });
+            }
+            if (tagSet.size > 0) result[col.name] = [...tagSet];
+        }
+        return result;
+    };
+
+    const buildPrefillValues = (
+        fields: Record<string, string | number | string[] | null>
+    ): Record<string, string> => {
+        const result: Record<string, string> = {};
+        for (const col of customColumns) {
+            const val = fields[col.name];
+            if (val === null || val === undefined) continue;
+            if (col.type === "metin") {
+                result[col.name] = typeof val === "string" ? val : String(val);
+            } else if (col.type === "adet") {
+                const n = typeof val === "number" ? Math.trunc(val) : parseInt(String(val));
+                if (!isNaN(n)) result[col.name] = String(n);
+            } else if (col.type === "sayı") {
+                const n = typeof val === "number" ? val : parseFloat(String(val));
+                if (!isNaN(n)) result[col.name] = String(n);
+            } else if (col.type === "tag") {
+                const arr = Array.isArray(val) ? val.filter((v): v is string => typeof v === "string") : [];
+                if (arr.length > 0) result[col.name] = arr.join(", ") + ", ";
+            }
+        }
+        return result;
+    };
+
+    const handleAIGenerate = async () => {
+        if ((!aiImage && !aiDescription.trim()) || aiLoading) return;
+        setAiLoading(true);
+        setAiError("");
+        try {
+            const existingTags = buildExistingTags();
+            const result = await generateProductFields({
+                description: aiDescription.trim() || undefined,
+                image: aiImage ?? undefined,
+                tableSchema: customColumns,
+                existingTags: Object.keys(existingTags).length > 0 ? existingTags : undefined,
+            });
+            setAiPrefillValues(buildPrefillValues(result.fields));
+            setAiStep("form");
+        } catch (err: unknown) {
+            setAiError(
+                err instanceof Error
+                    ? err.message
+                    : "Beklenmedik bir hata oluştu, lütfen tekrar deneyin."
+            );
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
     return (
         <div className="container mx-auto px-4 sm:px-8">
             <div className="py-8">
@@ -353,10 +450,20 @@ export const Dashboard = () => {
                     </div>
                 </div>
                 <div className="mt-8 flex justify-between items-center">
-                    <Link to={`/add-product?dashboardId=${dashboardId}`}
-                          className="rounded-lg border-2 border-solid bg-transparent px-4 py-2 transition-all border-black text-black hover:bg-[#dedede]"
-                    >Add Product
-                    </Link>
+                    <div className="flex items-center gap-3">
+                        <Link to={`/add-product?dashboardId=${dashboardId}`}
+                              className="rounded-lg border-2 border-solid bg-transparent px-4 py-2 transition-all border-black text-black hover:bg-[#dedede]"
+                        >Ürün Ekle
+                        </Link>
+                        {customColumns.length > 0 && (
+                            <button
+                                onClick={() => { resetAIModal(); setShowAIModal(true); }}
+                                className="rounded-lg border-2 border-solid bg-transparent px-4 py-2 transition-all border-indigo-600 text-indigo-600 hover:bg-indigo-50"
+                            >
+                                ✨ Akıllı Ürün Ekle
+                            </button>
+                        )}
+                    </div>
                     {canDeleteDashboard && (
                         <button
                             onClick={() => { setShowDeleteConfirm(true); setDeleteError(""); }}
@@ -397,6 +504,171 @@ export const Dashboard = () => {
                                 {deleteLoading ? "Siliniyor..." : "Evet, Sil"}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {showAIModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+
+                        {/* Başlık */}
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xl" aria-hidden>✨</span>
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                    {aiStep === "input" ? "Akıllı Ürün Ekle" : "AI Önerilerini Düzenle"}
+                                </h3>
+                            </div>
+                            <button
+                                onClick={() => { setShowAIModal(false); resetAIModal(); }}
+                                disabled={aiLoading}
+                                className="text-gray-400 hover:text-gray-600 disabled:opacity-50 text-xl leading-none"
+                                aria-label="Kapat"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Adım 1: Görsel + Metin */}
+                        {aiStep === "input" && (
+                            <div className="flex flex-col gap-5">
+                                <p className="text-sm text-gray-500">
+                                    Görsel ve/veya açıklama girin — AI ürün alanlarını otomatik dolduracak. En az biri zorunludur.
+                                </p>
+
+                                {/* Görsel yükleme */}
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-medium text-gray-700">
+                                        Görsel <span className="text-gray-400 font-normal">(opsiyonel — JPG, PNG, WebP, maks. 10 MB)</span>
+                                    </label>
+                                    {aiImagePreview ? (
+                                        <div className="relative w-full rounded-xl overflow-hidden border border-gray-200">
+                                            <img
+                                                src={aiImagePreview}
+                                                alt="Yüklenen görsel"
+                                                className="w-full max-h-48 object-contain bg-gray-50"
+                                            />
+                                            <button
+                                                onClick={() => { setAiImage(null); setAiImagePreview(null); setAiFileError(""); if (aiFileInputRef.current) aiFileInputRef.current.value = ""; }}
+                                                className="absolute top-2 right-2 bg-white border border-gray-300 rounded-full w-7 h-7 flex items-center justify-center text-gray-600 hover:bg-gray-100 shadow-sm"
+                                                aria-label="Görseli kaldır"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div
+                                            onDragOver={(e) => { e.preventDefault(); setAiDragOver(true); }}
+                                            onDragLeave={() => setAiDragOver(false)}
+                                            onDrop={(e) => { e.preventDefault(); setAiDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) applyAIFile(f); }}
+                                            onClick={() => aiFileInputRef.current?.click()}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={(e) => e.key === "Enter" && aiFileInputRef.current?.click()}
+                                            aria-label="Görsel yükleme alanı"
+                                            className={`w-full h-28 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors select-none ${aiDragOver ? "border-indigo-500 bg-indigo-50" : "border-gray-300 hover:border-indigo-400 hover:bg-gray-50"}`}
+                                        >
+                                            <span className="text-2xl text-gray-300" aria-hidden>📁</span>
+                                            <p className="text-sm text-gray-500">
+                                                Sürükle bırak veya <span className="text-indigo-600 font-medium">dosya seç</span>
+                                            </p>
+                                        </div>
+                                    )}
+                                    <input
+                                        ref={aiFileInputRef}
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp"
+                                        onChange={(e) => { const f = e.target.files?.[0]; if (f) applyAIFile(f); }}
+                                        className="hidden"
+                                        aria-hidden
+                                    />
+                                    {aiFileError && <p className="text-xs text-red-500" role="alert">{aiFileError}</p>}
+                                </div>
+
+                                {/* Metin açıklama */}
+                                <div className="flex flex-col gap-2">
+                                    <label htmlFor="ai-product-desc" className="text-sm font-medium text-gray-700">
+                                        Açıklama <span className="text-gray-400 font-normal">(opsiyonel)</span>
+                                    </label>
+                                    <textarea
+                                        id="ai-product-desc"
+                                        value={aiDescription}
+                                        onChange={(e) => setAiDescription(e.target.value)}
+                                        maxLength={1000}
+                                        rows={3}
+                                        placeholder="Ürün hakkında bilgi verin..."
+                                        className="p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                    />
+                                    <p className="text-xs text-gray-400 text-right">{aiDescription.length} / 1000</p>
+                                </div>
+
+                                {/* AI Hata */}
+                                {aiError && (
+                                    <div role="alert" className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+                                        <p className="font-medium mb-1">AI yanıt vermedi</p>
+                                        <p>{aiError}</p>
+                                    </div>
+                                )}
+
+                                {/* Butonlar */}
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => { setShowAIModal(false); resetAIModal(); }}
+                                        disabled={aiLoading}
+                                        className="flex-1 py-2 px-4 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                    >
+                                        İptal
+                                    </button>
+                                    <button
+                                        onClick={handleAIGenerate}
+                                        disabled={(!aiImage && !aiDescription.trim()) || aiLoading}
+                                        className="flex-1 py-2 px-4 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                        {aiLoading ? (
+                                            <>
+                                                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden />
+                                                Analiz ediliyor...
+                                            </>
+                                        ) : (
+                                            <>✨ Akıllı Doldur</>
+                                        )}
+                                    </button>
+                                </div>
+
+                                {!aiImage && !aiDescription.trim() && (
+                                    <p className="text-xs text-gray-400 text-center -mt-2">
+                                        Devam etmek için görsel veya açıklama ekleyin
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Adım 2: Pre-fill'li form */}
+                        {aiStep === "form" && (
+                            <div className="flex flex-col gap-4">
+                                <p className="text-sm text-gray-500">
+                                    AI aşağıdaki değerleri önerdi. Düzenleyip kaydedebilirsiniz.
+                                </p>
+                                <DynamicAddForm
+                                    dashboardId={dashboardId}
+                                    columns={customColumns}
+                                    initialValues={aiPrefillValues}
+                                    onSuccess={() => {
+                                        setShowAIModal(false);
+                                        resetAIModal();
+                                        fetchProducts();
+                                    }}
+                                />
+                                <button
+                                    onClick={() => setAiStep("input")}
+                                    className="text-sm text-gray-500 hover:text-gray-700 underline text-center"
+                                >
+                                    ← Geri dön (görseli/açıklamayı değiştir)
+                                </button>
+                            </div>
+                        )}
+
                     </div>
                 </div>
             )}

@@ -1,74 +1,198 @@
-# Inventory Management App
+# Akıllı Stok Takip Sistemi (Inventory Management System)
 
-## Overview
-This project is a web application designed to optimize the tracking, organization, and control of warehouse products. The backend is built with Go and Postgres, while the frontend is developed using React and TypeScript.
+Yapay zeka destekli, özelleştirilebilir sütun yapısıyla dinamik tablo yönetimi sunan modern bir stok takip uygulaması. Varlık yönetimi ihtiyaçlarını karşılayan bu sistem; rol tabanlı erişim kontrolü (RBAC), esnek tablo tasarımı ve yapay zeka ile otomatik veri doldurma özelliklerini bir arada sunar.
 
-## Screenshot
-![imsscreenshot](https://github.com/user-attachments/assets/73eb210e-dbd1-4700-9c68-02b63d0ea3a2)
+---
 
-## Technologies
+## Temel Özellikler
+
+### Dinamik Tablo Sistemi
+- Kullanıcılar kendi stok tablolarını özel sütunlarla tasarlayabilir
+- Desteklenen sütun tipleri: **metin**, **adet** (tam sayı), **sayı** (ondalıklı), **etiket/tag** (çoklu değer)
+- Her sütun için tip bazlı kısıtlamalar: minLength, maxLength, min, max, decimalPlaces, maxTags
+- Sütun verileri PostgreSQL JSONB alanında saklanır; şema değişikliklerine gerek kalmaz
+
+### AI ile Tablo Oluşturma (Görev 2)
+- Kullanıcı bir ürün görseli ve/veya metin açıklama sağlar
+- Sistem, OpenAI `gpt-4o-mini` modeline görsel + metin gönderir
+- AI, tablonun amacına uygun sütun yapısını (`ColumnDefinition[]`) otomatik önerir
+- Kullanıcı önerileri düzenleyip onaylar; tablo oluşturulur
+- Mimari: provider-agnostic AI client (OpenAI ve Anthropic destekli), prompt sandwich konfigürasyonu
+
+### AI ile Ürün Ekleme (Görev 3)
+- Tablo detay sayfasında "✨ Akıllı Ürün Ekle" butonu
+- Kullanıcı ürün görseli ve/veya açıklama girer
+- AI'ya tablonun sütun şeması ve mevcut etiket havuzu context olarak verilir
+- AI, her sütun için uygun değeri (`metin` → string, `adet` → integer, `sayı` → number, `tag` → string[]) doldurur
+- Form pre-fill'li açılır; kullanıcı düzenleyip kaydedebilir
+
+### Rol Tabanlı Erişim Kontrolü (RBAC)
+| Rol | Yetkiler |
+|-----|----------|
+| `admin` | Tam yetki — kullanıcı yönetimi, tüm tablolar, tablo silme |
+| `super_user` | Tablo oluşturma/silme, kullanıcı yönetimi (user rolünü), tüm tablolara erişim |
+| `user` | Yalnızca atanan tablolar, profil düzenleme |
+
+### Etiket (Tag) Sistemi
+- Ürün kaydında mevcut etiketler arasından seçim yapılabilir
+- Yeni etiket yazıldığında o tablonun etiket havuzuna eklenir
+- Otomatik tamamlama (autocomplete) araması destekler
+
+### Ürün Tablosu
+- Tag bazlı arama ve filtreleme
+- Autocomplete öneriler (3+ karakter)
+- Ürün düzenleme ve silme
+- Tablo silme (onay modalı ile)
+
+---
+
+## Mimari
+
+### Backend — Go + Echo v4
+```
+server/pkg/
+├── controller/    # HTTP handler'ları (Echo route'ları)
+├── service/       # İş mantığı katmanı
+├── repository/    # PostgreSQL sorguları (pgx v4)
+├── middleware/    # JWT auth, RBAC rol kontrolü
+└── domain/        # Struct tanımları (Dashboard, Product, Claims)
+```
+
+- **Auth:** JWT cookie (`token`) — HttpOnly değil; frontend `js-cookie` ile okur
+- **JSONB:** `column_definitions` (tablo şeması) ve `custom_data` (ürün verileri) JSONB olarak saklanır
+- **Migration:** `cmd/migrate/main.go` — `IF NOT EXISTS` ile idempotent
+
+### Frontend — React + TypeScript + Vite + Tailwind CSS
+```
+client/src/
+├── lib/
+│   └── ai-client.ts        # Provider-agnostic AI client (OpenAI + Anthropic)
+├── config/
+│   └── ai-prompts.ts       # Prompt sandwich konfigürasyonu (Görev 2 & 3)
+└── components/
+    ├── Root.tsx             # Ana sayfa — dashboard kartları
+    ├── Dashboard.tsx        # Tablo detayı — ürün listesi, AI modal
+    ├── Add.tsx              # Ürün ekleme — LegacyForm + DynamicForm
+    ├── Update.tsx           # Ürün güncelleme
+    ├── CreateTable.tsx      # Tablo oluşturma sihirbazı (2 adım)
+    ├── CreateTableAI.tsx    # AI ile tablo oluşturma sayfası
+    ├── ColumnDefinitionForm.tsx  # Sütun tanımlama formu
+    ├── UserManagement.tsx   # Kullanıcı yönetimi
+    ├── Profile.tsx          # Profil düzenleme
+    ├── Header.tsx           # Global üst bilgi (auth nav)
+    ├── Login.tsx
+    └── SignUp.tsx
+```
+
+- **State:** Redux/Zustand yok — JWT cookie + local useState
+- **API:** Vite proxy `/api/*` → `localhost:8080`
+
+---
+
+## Teknoloji Yığını
+
+| Katman | Teknoloji |
+|--------|-----------|
+| Backend dil | Go 1.23+ |
+| Web framework | Echo v4 |
+| Veritabanı | PostgreSQL 12+ |
+| DB driver | pgx v4 |
+| Auth | JWT (golang-jwt/jwt/v5) |
+| Frontend dil | TypeScript |
+| UI framework | React 18 |
+| Build tool | Vite |
+| CSS | Tailwind CSS |
+| AI provider | OpenAI (gpt-4o-mini) / Anthropic |
+| HTTP client | Fetch API (provider-agnostic) |
+
+---
+
+## AI Entegrasyonu — Teknik Detay
+
+### Soyut AI Client (`ai-client.ts`)
+```ts
+// Tablo şeması üretme (Görev 2)
+generateTableSchema({ tableName, description?, image? }) → ColumnDefinition[]
+
+// Ürün alanları doldurma (Görev 3)
+generateProductFields({ description?, image?, tableSchema, existingTags? }) → Record<string, value>
+```
+
+- Provider env var'dan okunur: `VITE_AI_API_PROVIDER=openai|anthropic`
+- Model env var'dan okunur: `VITE_AI_MODEL=gpt-4o-mini`
+- 60 saniyelik timeout — AbortController kullanır
+- Görsel base64 encode edilerek gönderilir (vision API)
+- Markdown code fence strip — AI'nın JSON döndürmesini sağlar
+
+### Prompt Sandwich Yapısı (`ai-prompts.ts`)
+```
+[PRE_PROMPT]  ← uzman rolü + kural seti
+Tablo şeması / Kullanıcı açıklaması
+[POST_PROMPT] ← strict JSON format zorunluluğu
+```
+
+### AI Veri Akışı — Görev 2
+```
+Kullanıcı (görsel + metin)
+    → CreateTableAI.tsx
+    → generateTableSchema()
+    → OpenAI gpt-4o-mini
+    → ColumnDefinition[] parse
+    → CreateTable.tsx Step 2 pre-fill
+    → Kullanıcı onaylar
+    → POST /api/dashboards
+```
+
+### AI Veri Akışı — Görev 3
+```
+Kullanıcı (görsel + metin)
+    → Dashboard.tsx AI Modal
+    → buildExistingTags() ← mevcut ürünlerden
+    → generateProductFields(tableSchema, existingTags)
+    → OpenAI gpt-4o-mini
+    → buildPrefillValues() ← tip dönüşümleri
+    → DynamicAddForm pre-fill
+    → Kullanıcı düzenler + kaydeder
+    → POST /api/products
+```
+
+---
+
+## Kurulum
+
+### Gereksinimler
+- Go 1.23+
+- Node.js 18+
+- PostgreSQL 12+
 
 ### Backend
-- **Go**: A statically typed, compiled programming language designed for simplicity and efficiency.
-- **Postgres**: A powerful, open-source object-relational database system with a strong reputation for reliability and performance.
-- **Echo**: A high-performance, minimalist web framework for Go, designed for ease of use and scalability.
-- **github.com/golang-jwt/jwt/v5**: A Go implementation of JSON Web Tokens (JWT) for secure authentication.
-- **github.com/jackc/pgx/v4**: A PostgreSQL driver and toolkit for Go, providing efficient and feature-rich database interactions.
-- **github.com/labstack/gommon**: A set of common packages for Go, including logging, color, and bytes utilities.
+```bash
+# Root dizininde .env oluştur
+cp .env.example .env
+# .env içindeki DB ve JWT değerlerini doldur
+
+# Migration (idempotent)
+cd server && go run cmd/migrate/main.go
+
+# Sunucuyu başlat
+go run cmd/imsapi/main.go   # :8080
+```
 
 ### Frontend
-- **React**: A JavaScript library for building user interfaces, maintained by Facebook and a community of individual developers and companies.
-- **TypeScript**: A strongly typed programming language that builds on JavaScript, giving you better tooling at any scale.
-- **Tailwind CSS**: A utility-first CSS framework for rapidly building custom user interfaces.
-- **js-cookie**: A simple, lightweight JavaScript API for handling cookies.
+```bash
+cd client
 
-## Getting Started
+# AI entegrasyonu için .env oluştur
+cp .env.example .env
+# VITE_AI_API_KEY değerini doldur
 
-### Prerequisites
-- Go 1.23.0 or later
-- Node.js 14.x or later
-- Postgres 12 or later
+npm install
+npm run dev   # :5173
+```
 
-### Installation
+Vite proxy: `/api/*` → `localhost:8080`
 
-1. **Clone the repository:**
-   ```sh
-   git clone https://github.com/meminguner/inventory-management-system-dev.git
-   cd inventory-management-system-dev
-   ```
+---
 
-2. **Backend Setup:**
-   ```sh
-   cd server
-   go mod download
-   go build -o ./ims cmd/imsapi/main.go
-   ```
-
-   Create a local `.env` file from the example values and replace the placeholders with your own local database credentials and JWT secret:
-   ```sh
-   cp ../.env.example ../.env
-   ```
-
-3. **Frontend Setup:**
-   ```sh
-   cd client
-   npm install
-   npm run dev
-   ```
-
-### Running the Application
-
-1. **Start the Backend:**
-   ```sh
-   cd server
-   ./ims
-   ```
-
-2. **Start the Frontend:**
-   ```sh
-   cd client
-   npm run dev
-   ```
-
-## License
-This project is distributed under the MIT License. The original license notice is retained in [LICENSE](LICENSE).
+## Lisans
+MIT — orijinal lisans metni [LICENSE](LICENSE) dosyasında korunmaktadır.

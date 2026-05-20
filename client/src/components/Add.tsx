@@ -136,18 +136,21 @@ const LegacyAddForm = ({ dashboardId, onSuccess }: { dashboardId: number; onSucc
 
 // ── Dinamik form (özel sütunlar) ──────────────────────────────────────────────
 
-const DynamicAddForm = ({
+export const DynamicAddForm = ({
     dashboardId,
     columns,
     onSuccess,
+    initialValues,
 }: {
     dashboardId: number;
     columns: ColumnDefinition[];
     onSuccess: () => void;
+    initialValues?: Record<string, string>;
 }) => {
-    const [values, setValues] = useState<Record<string, string>>(() =>
-        Object.fromEntries(columns.map(c => [c.name, ""]))
-    );
+    const [values, setValues] = useState<Record<string, string>>(() => {
+        const defaults = Object.fromEntries(columns.map(c => [c.name, ""]));
+        return { ...defaults, ...(initialValues ?? {}) };
+    });
     const [tagSuggestions, setTagSuggestions] = useState<Record<string, string[]>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [submitError, setSubmitError] = useState("");
