@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Cookies from "js-cookie";
 import { ColumnDefinitionForm, ColumnDefinition } from "./ColumnDefinitionForm";
 
@@ -32,13 +32,22 @@ const TYPE_LABELS: Record<string, string> = {
     tag: "Etiket",
 };
 
+interface LocationState {
+    step?: 2;
+    tableName?: string;
+    aiColumns?: ColumnDefinition[];
+}
+
 export const CreateTable = () => {
     const navigate = useNavigate();
+    const location = useLocation();
+    const incoming = (location.state ?? {}) as LocationState;
 
-    const [step, setStep] = useState<1 | 2>(1);
-    const [tableName, setTableName] = useState("");
+    // AI sayfasından geri dönüşte step 2'yi ve sütunları pre-fill et
+    const [step, setStep] = useState<1 | 2>(incoming.step === 2 ? 2 : 1);
+    const [tableName, setTableName] = useState(incoming.tableName ?? "");
     const [tableNameError, setTableNameError] = useState("");
-    const [columns, setColumns] = useState<ColumnDefinition[]>([]);
+    const [columns, setColumns] = useState<ColumnDefinition[]>(incoming.aiColumns ?? []);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [serverError, setServerError] = useState("");
@@ -168,18 +177,43 @@ export const CreateTable = () => {
                             )}
                         </div>
 
-                        <div className="flex gap-4">
+                        <div className="flex flex-col gap-3">
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => navigate("/")}
+                                    className="flex-1 py-3 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                                >
+                                    İptal
+                                </button>
+                                <button
+                                    onClick={goToStep2}
+                                    className="flex-1 py-3 px-4 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors"
+                                >
+                                    İleri →
+                                </button>
+                            </div>
+                            <div className="relative flex items-center gap-3">
+                                <div className="flex-1 h-px bg-gray-200" />
+                                <span className="text-xs text-gray-400 shrink-0">veya</span>
+                                <div className="flex-1 h-px bg-gray-200" />
+                            </div>
                             <button
-                                onClick={() => navigate("/")}
-                                className="flex-1 py-3 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                                onClick={() => {
+                                    const trimmed = tableName.trim();
+                                    if (!trimmed) {
+                                        setTableNameError("Tablo ismi zorunludur.");
+                                        return;
+                                    }
+                                    if (trimmed.length > 50) {
+                                        setTableNameError("Tablo ismi en fazla 50 karakter olabilir.");
+                                        return;
+                                    }
+                                    setTableNameError("");
+                                    navigate("/create-table-ai", { state: { tableName: trimmed } });
+                                }}
+                                className="w-full py-3 px-4 rounded-lg border-2 border-indigo-200 bg-indigo-50 text-indigo-700 font-medium hover:bg-indigo-100 hover:border-indigo-300 transition-colors flex items-center justify-center gap-2"
                             >
-                                İptal
-                            </button>
-                            <button
-                                onClick={goToStep2}
-                                className="flex-1 py-3 px-4 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors"
-                            >
-                                İleri
+                                ✨ AI ile Oluştur
                             </button>
                         </div>
                     </>

@@ -8,6 +8,7 @@ import { Dashboard } from "./components/Dashboard.tsx";
 import { Add } from "./components/Add.tsx";
 import { Update } from "./components/Update.tsx";
 import { CreateTable } from "./components/CreateTable.tsx";
+import { CreateTableAI } from "./components/CreateTableAI.tsx";
 import { UserManagement } from "./components/UserManagement.tsx";
 import { Profile } from "./components/Profile.tsx";
 
@@ -23,6 +24,7 @@ function App() {
                         <Route path="/signup" element={<SignUp />} />
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/create-table" element={<CreateTable />} />
+                        <Route path="/create-table-ai" element={<CreateTableAI />} />
                         <Route path="/add-product" element={<Add />} />
                         <Route path="/update-product" element={<Update />} />
                         <Route path="/users" element={<UserManagement />} />
