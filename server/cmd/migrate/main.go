@@ -138,5 +138,23 @@ func main() {
 	}
 	fmt.Println("dashboard_permissions table created or already exists.")
 
+	addCustomData := `
+	ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_data JSONB NOT NULL DEFAULT '{}'::jsonb;
+	`
+	_, err = dbPool.Exec(ctx, addCustomData)
+	if err != nil {
+		log.Fatalf("Failed to add custom_data column: %v", err)
+	}
+	fmt.Println("custom_data column added or already exists.")
+
+	addColumnDefs := `
+	ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS column_definitions JSONB NOT NULL DEFAULT '[]'::jsonb;
+	`
+	_, err = dbPool.Exec(ctx, addColumnDefs)
+	if err != nil {
+		log.Fatalf("Failed to add column_definitions column: %v", err)
+	}
+	fmt.Println("column_definitions column added or already exists.")
+
 	fmt.Println("Migration completed successfully.")
 }
