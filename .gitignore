@@ -2,8 +2,18 @@
 .env
 .DS_Store
 
-# Local AI/work notes
+# Screenshots and local notes
+"ekran görüntüleri/"
+ekran\ görüntüleri/
+karşılaşılan\ hatalar.md
+"karşılaşılan hatalar.md"
+
+# Local AI/work notes — NOT for repo
 AI_CONTEXT_AUTHORIZATION.md
+AI_HANDOFF.md
 client/AI_NOTES.md
 server/AI_NOTES.md
 yapılcaklar.md
+yapılması_isteneler.md
+CLAUDE.md
+.claude/
