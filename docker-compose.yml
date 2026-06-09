@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-ims}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD .env dosyasinda tanimli olmali}
+      POSTGRES_DB: ${DB_NAME:-ims}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ims} -d ${DB_NAME:-ims}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    image: ims-server
+    build: ./server
+    command: ["/app/migrate"]
+    environment: &api-env
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-ims}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD .env dosyasinda tanimli olmali}
+      DB_NAME: ${DB_NAME:-ims}
+      JWT_KEY: ${JWT_KEY:?JWT_KEY .env dosyasinda tanimli olmali}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: ims-server
+    build: ./server
+    environment: *api-env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./client
+      args:
+        VITE_AI_API_PROVIDER: ${VITE_AI_API_PROVIDER:-openai}
+        VITE_AI_API_KEY: ${VITE_AI_API_KEY}
+        VITE_AI_MODEL: ${VITE_AI_MODEL:-gpt-4o-mini}
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:

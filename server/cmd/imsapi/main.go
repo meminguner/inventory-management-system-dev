@@ -19,9 +19,8 @@ func main() {
 	envPath := filepath.Join("..", ".env")
 	err := godotenv.Load(envPath)
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("Error loading .env file, continuing with environment variables")
 	}
-
 
 	ctx := context.Background()
 	configurationManager := app.NewConfigurationManager()

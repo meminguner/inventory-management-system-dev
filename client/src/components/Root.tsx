@@ -6,14 +6,6 @@ export const Root = () => {
     const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
     const [dashboards, setDashboards] = useState<{id: number, name: string}[]>([]);
 
-    const parseJwt = (token: string) => {
-        try {
-            return JSON.parse(atob(token.split('.')[1]));
-        } catch {
-            return null;
-        }
-    };
-
     useEffect(() => {
         const token = Cookies.get("token");
         if (token) {

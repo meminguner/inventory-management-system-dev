@@ -160,7 +160,32 @@ Kullanıcı (görsel + metin)
 
 ## Kurulum
 
-### Gereksinimler
+### Docker ile (önerilen)
+
+Tek gereksinim: Docker (Desktop veya Engine).
+
+```bash
+# Root dizininde .env oluştur ve değerleri doldur
+cp .env.example .env
+# Zorunlu: DB_PASSWORD, JWT_KEY, VITE_AI_API_KEY
+
+# Tüm stack'i ayağa kaldır (db + migration + api + web)
+docker compose up --build -d
+```
+
+Uygulama: `http://localhost:3000` (port `WEB_PORT` ile değiştirilebilir)
+
+- `db` — PostgreSQL 16, veriler `pgdata` volume'unda kalıcı
+- `migrate` — idempotent şema migration'ı, tek seferlik çalışır
+- `api` — Go backend (`:8080`, container içi)
+- `web` — nginx; statik frontend + `/api/*` → backend proxy
+
+> Not: `VITE_*` değişkenleri build sırasında bundle'a gömülür — değiştirince
+> `docker compose up --build web` ile web imajını yeniden build etmek gerekir.
+
+### Manuel kurulum
+
+Gereksinimler:
 - Go 1.23+
 - Node.js 18+
 - PostgreSQL 12+

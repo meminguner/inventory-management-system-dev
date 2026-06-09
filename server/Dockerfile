@@ -5,11 +5,13 @@ COPY go.* .
 RUN go mod download
 COPY . .
 RUN go build -o ./ims cmd/imsapi/main.go
+RUN go build -o ./migrate cmd/migrate/main.go
 
 FROM gcr.io/distroless/base-debian12
 
 WORKDIR /app
 COPY --from=builder /build/ims ./ims
+COPY --from=builder /build/migrate ./migrate
 
 # Configure DB_USER, DB_PORT, DB_PASSWORD, DB_HOST, DB_NAME, and JWT_KEY
 # with environment variables at runtime.
