@@ -60,15 +60,14 @@ export const Dashboard = () => {
     const aiFileInputRef = useRef<HTMLInputElement>(null);
 
 
-    const fetchProducts = useCallback(async (tag: string = "") => {
+    const fetchProducts = useCallback(async () => {
         if (!dashboardId) {
             navigate("/");
             return;
         }
 
         try {
-            const query = tag ? `&tag=${encodeURIComponent(tag)}` : "";
-            const response = await fetch(`/api/products?dashboardId=${dashboardId}${query}`);
+            const response = await fetch(`/api/products?dashboardId=${dashboardId}`);
             if (response.status === 401) {
                 navigate("/login");
                 return;
@@ -99,9 +98,33 @@ export const Dashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dashboardId]);
 
+    // 3+ harfli her terim, ürünün görünen tüm alanlarında (ad, etiketler, özel sütunlar) substring olarak aranır
+    const normalizeText = (s: string) => s.toLocaleLowerCase("tr-TR");
+
+    const productMatchesTerm = (product: Product, term: string): boolean => {
+        const haystack: string[] = [product.name ?? ""];
+        if (Array.isArray(product.category)) haystack.push(...product.category);
+        if (product.customData) {
+            for (const val of Object.values(product.customData)) {
+                if (Array.isArray(val)) haystack.push(...val.map(String));
+                else if (val !== null && val !== undefined) haystack.push(String(val));
+            }
+        }
+        const needle = normalizeText(term);
+        return haystack.some(h => normalizeText(h).includes(needle));
+    };
+
+    const searchTerms = searchTag
+        .split(",")
+        .map(t => t.trim())
+        .filter(t => t.length >= 3);
+
+    const visibleProducts = searchTerms.length === 0
+        ? products
+        : products.filter(p => searchTerms.every(term => productMatchesTerm(p, term)));
+
     const handleSearch = () => {
         setShowSuggestions(false);
-        fetchProducts(searchTag);
     };
 
     const handleInputChange = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -112,7 +135,6 @@ export const Dashboard = () => {
             setShowSuggestions(false);
             setSuggestions([]);
             setHighlightedIndex(-1);
-            fetchProducts("");
             return;
         }
 
@@ -143,7 +165,6 @@ export const Dashboard = () => {
         setShowSuggestions(false);
         setSuggestions([]);
         setHighlightedIndex(-1);
-        fetchProducts("");
     };
 
     const handleSuggestionClick = (suggestion: string) => {
@@ -322,7 +343,7 @@ export const Dashboard = () => {
                     <div className="w-full flex-grow relative flex items-center">
                         <input
                             type="text"
-                            placeholder="Search products by tag (e.g., ofis, kırtasiye)"
+                            placeholder="Ürün adı veya etiket ara (en az 3 harf)"
                             value={searchTag}
                             onChange={handleInputChange}
                             onKeyDown={handleKeyDown}
@@ -389,14 +410,14 @@ export const Dashboard = () => {
                             </thead>
                             <tbody>
                             {customColumns.length > 0 ? (
-                                products.length === 0 ? (
+                                visibleProducts.length === 0 ? (
                                     <tr>
                                         <td colSpan={customColumns.length + 1} className="px-5 py-8 text-center text-sm text-gray-400 bg-white">
-                                            Henüz ürün eklenmedi.
+                                            {products.length === 0 ? "Henüz ürün eklenmedi." : "Aramayla eşleşen ürün bulunamadı."}
                                         </td>
                                     </tr>
                                 ) : (
-                                    products.map((product, index) => (
+                                    visibleProducts.map((product, index) => (
                                         <tr key={index}>
                                             {customColumns.map(col => {
                                                 const val = product.customData?.[col.name];
@@ -416,8 +437,14 @@ export const Dashboard = () => {
                                         </tr>
                                     ))
                                 )
+                            ) : visibleProducts.length === 0 && products.length > 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-gray-400 bg-white">
+                                        Aramayla eşleşen ürün bulunamadı.
+                                    </td>
+                                </tr>
                             ) : (
-                                products.map((product, index) => (
+                                visibleProducts.map((product, index) => (
                                     <tr key={index}>
                                         <td className="px-5 py-5 border-b text-left border-gray-200 bg-white text-sm">
                                             <p className="text-gray-900 whitespace-no-wrap">{product.name}</p>
