@@ -2,6 +2,9 @@
 .env
 .DS_Store
 
+# air hot-reload build çıktısı
+server/tmp/
+
 # Screenshots and local notes
 "ekran görüntüleri/"
 ekran\ görüntüleri/

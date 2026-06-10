@@ -5,6 +5,9 @@ services:
       POSTGRES_USER: ${DB_USER:-ims}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD .env dosyasinda tanimli olmali}
       POSTGRES_DB: ${DB_NAME:-ims}
+    ports:
+      # Lokal geliştirme (air + vite dev) sırasında host'taki Go API'nin db'ye erişimi için
+      - "127.0.0.1:5432:5432"
     volumes:
       # PG18 image'inda PGDATA /var/lib/postgresql/18/docker — mount üst dizine yapılmalı
       - pgdata:/var/lib/postgresql
