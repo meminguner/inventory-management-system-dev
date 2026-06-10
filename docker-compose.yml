@@ -24,6 +24,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD .env dosyasinda tanimli olmali}
       DB_NAME: ${DB_NAME:-ims}
       JWT_KEY: ${JWT_KEY:?JWT_KEY .env dosyasinda tanimli olmali}
+      AI_API_PROVIDER: ${AI_API_PROVIDER:-openai}
+      AI_API_KEY: ${AI_API_KEY}
     depends_on:
       db:
         condition: service_healthy
@@ -45,7 +47,6 @@ services:
       context: ./client
       args:
         VITE_AI_API_PROVIDER: ${VITE_AI_API_PROVIDER:-openai}
-        VITE_AI_API_KEY: ${VITE_AI_API_KEY}
         VITE_AI_MODEL: ${VITE_AI_MODEL:-gpt-4o-mini}
     ports:
       - "${WEB_PORT:-3000}:80"

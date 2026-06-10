@@ -35,8 +35,11 @@ export interface ProductFieldsResponse {
 // ─── Env okuma ───────────────────────────────────────────────────────────────
 
 const AI_PROVIDER = (import.meta.env.VITE_AI_API_PROVIDER as string) || "openai";
-const AI_API_KEY = import.meta.env.VITE_AI_API_KEY as string;
 const AI_MODEL = (import.meta.env.VITE_AI_MODEL as string) || "gpt-4o";
+
+// API anahtarı frontend'de tutulmaz — istekler backend'in /ai/chat
+// proxy'sine gider, anahtar sunucu tarafında eklenir.
+const AI_PROXY_URL = "/api/ai/chat";
 
 const REQUEST_TIMEOUT_MS = 60_000;
 
@@ -98,13 +101,10 @@ async function callOpenAI(
     };
 
     const res = await fetchWithTimeout(
-        "https://api.openai.com/v1/chat/completions",
+        AI_PROXY_URL,
         {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${AI_API_KEY}`,
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         },
         REQUEST_TIMEOUT_MS
@@ -114,6 +114,7 @@ async function callOpenAI(
         const err = await res.json().catch(() => ({}));
         throw new Error(
             (err as { error?: { message?: string } }).error?.message ||
+            (err as { error_message?: string }).error_message ||
             `OpenAI API hatası: ${res.status}`
         );
     }
@@ -153,14 +154,10 @@ async function callAnthropic(
     };
 
     const res = await fetchWithTimeout(
-        "https://api.anthropic.com/v1/messages",
+        AI_PROXY_URL,
         {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-api-key": AI_API_KEY,
-                "anthropic-version": "2023-06-01",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         },
         REQUEST_TIMEOUT_MS
@@ -170,6 +167,7 @@ async function callAnthropic(
         const err = await res.json().catch(() => ({}));
         throw new Error(
             (err as { error?: { message?: string } }).error?.message ||
+            (err as { error_message?: string }).error_message ||
             `Anthropic API hatası: ${res.status}`
         );
     }
@@ -187,9 +185,6 @@ async function callAI(
     userText: string,
     image?: File
 ): Promise<string> {
-    if (!AI_API_KEY) {
-        throw new Error("API anahtarı bulunamadı. Lütfen .env dosyasını kontrol edin.");
-    }
     switch (AI_PROVIDER) {
         case "anthropic":
             return callAnthropic(systemPrompt, userText, image);

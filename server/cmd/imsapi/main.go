@@ -38,10 +38,13 @@ func main() {
 	productService := service.NewProductService(productRepository)
 	productController := controller.NewProductController(productService)
 
+	aiController := controller.NewAIController()
+
 	e := echo.New()
 	userController.RegisterUserRoutes(e)
 	dashboardController.RegisterDashboardRoutes(e)
 	productController.RegisterProductRoutes(e)
+	aiController.RegisterAIRoutes(e)
 
 	port := os.Getenv("PORT")
 	if port == "" {
