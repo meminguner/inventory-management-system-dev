@@ -268,8 +268,18 @@ export const Dashboard = () => {
             setAiFileError("Dosya boyutu 10 MB'ı aşamaz.");
             return;
         }
-        setAiImage(file);
-        setAiImagePreview(URL.createObjectURL(file));
+        // Bozuk dosyayı AI'a göndermeden yakala: tarayıcıda decode edilemeyen görsel reddedilir
+        const url = URL.createObjectURL(file);
+        const probe = new Image();
+        probe.onload = () => {
+            setAiImage(file);
+            setAiImagePreview(url);
+        };
+        probe.onerror = () => {
+            URL.revokeObjectURL(url);
+            setAiFileError("Görsel okunamadı — dosya bozuk olabilir. Başka bir görsel deneyin.");
+        };
+        probe.src = url;
     };
 
     const buildExistingTags = (): Record<string, string[]> => {

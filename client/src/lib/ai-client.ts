@@ -68,9 +68,15 @@ function parseAIJson(raw: string): unknown {
 function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ms);
-    return fetch(url, { ...init, signal: controller.signal }).finally(() =>
-        clearTimeout(timer)
-    );
+    return fetch(url, { ...init, signal: controller.signal })
+        .catch(() => {
+            // Ham tarayıcı hataları ("Failed to fetch", AbortError) kullanıcıya gösterilmesin
+            if (controller.signal.aborted) {
+                throw new Error("AI yanıtı zaman aşımına uğradı. Lütfen tekrar deneyin.");
+            }
+            throw new Error("Sunucuya bağlanılamadı. Bağlantınızı kontrol edip tekrar deneyin.");
+        })
+        .finally(() => clearTimeout(timer));
 }
 
 // ─── OpenAI ──────────────────────────────────────────────────────────────────

@@ -39,8 +39,18 @@ export const CreateTableAI = () => {
             setFileError("Dosya boyutu 10 MB'ı aşamaz.");
             return;
         }
-        setImage(file);
-        setImagePreview(URL.createObjectURL(file));
+        // Bozuk dosyayı AI'a göndermeden yakala: tarayıcıda decode edilemeyen görsel reddedilir
+        const url = URL.createObjectURL(file);
+        const probe = new Image();
+        probe.onload = () => {
+            setImage(file);
+            setImagePreview(url);
+        };
+        probe.onerror = () => {
+            URL.revokeObjectURL(url);
+            setFileError("Görsel okunamadı — dosya bozuk olabilir. Başka bir görsel deneyin.");
+        };
+        probe.src = url;
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
