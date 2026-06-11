@@ -258,8 +258,13 @@ export const Dashboard = () => {
                     query,
                 });
                 if (seq !== aiSearchSeqRef.current) return;
-                aiSearchCacheRef.current.set(query, result);
-                setAiSearchSuggestions(result);
+                // Garanti filtresi: boş sonuç verecek öneri gösterilmez (arama substring temelli)
+                const grounded = result.filter(s => {
+                    const terms = s.split(",").map(t => t.trim()).filter(t => t.length >= 3);
+                    return terms.length > 0 && products.some(p => terms.every(term => productMatchesTerm(p, term)));
+                });
+                aiSearchCacheRef.current.set(query, grounded);
+                setAiSearchSuggestions(grounded);
             } catch (err) {
                 if (seq !== aiSearchSeqRef.current) return;
                 console.error("AI arama önerileri alınamadı:", err);

@@ -80,10 +80,14 @@ Sana tablonun adı, sütunları, tablodaki ürün isimlerinden bir örneklem, va
 Görevin: Google'ın otomatik tamamlaması gibi, kullanıcının aramasını tamamlayan veya şekillendiren 3-5 kısa arama önerisi üretmek.
 
 Kurallar:
-- Önerileri MUTLAKA tablodaki gerçek verilere (ürün isimleri, etiketler) dayandır — tabloda karşılığı olmayan öneri verme.
+- Arama motoru SADECE birebir metin eşleşmesi yapar (substring) — kelime köküne veya anlama bakmaz.
+  Bu yüzden önerinin virgülle ayrılmış HER terimi, sana verilen ürün isimleri veya etiketlerin içinde
+  AYNEN geçmeli. Verilerde geçmeyen birleşik ifade ÜRETME (örn. etikette "oyun" varsa "oyun" öner,
+  "oyun bilgisayarı" gibi verilerde geçmeyen ifade önerme).
+- Arama motoru virgülü VE olarak işler: "laptop, 16gb" → her iki terimi de içeren ürünler.
+  İki kavramı birleştirmek istersen ifade kurma, virgül kullan: "oyun, laptop" gibi.
 - Kullanıcının yazdığıyla alakalı kal: yazdığını tamamla, olası yazım hatasını düzelt veya yakın ilişkili terimi öner.
-- Genel bilgini sadece ilişkilendirme için kullan (örn. "macbook" yazana etiketlerde varsa "laptop" önermek) — önerinin tabloda karşılığı olmalı.
-- Arama motoru virgülü VE olarak işler: "laptop, 16gb" → her iki terimi de içeren ürünler. Sorguyu daraltmak faydalıysa virgüllü kombinasyon öner.
+- Genel bilgini sadece ilişkilendirme için kullan (örn. "macbook" yazana etiketlerde varsa "laptop" önermek) — terimler yine verilerden gelmeli.
 - Her öneri kısa olsun (1-4 kelime veya virgüllü kombinasyon) ve her terim en az 3 harf olsun.
 - Aynı önerinin tekrarını veya kullanıcının yazdığının birebir aynısını verme.`;
 
