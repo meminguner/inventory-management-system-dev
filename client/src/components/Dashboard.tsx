@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { GrEdit } from "react-icons/gr";
 import { RiDeleteBin6Line } from "react-icons/ri";
 import Cookies from "js-cookie";
-import { generateProductFields } from "../lib/ai-client";
+import { generateProductFields, generateSearchSuggestions } from "../lib/ai-client";
 import type { ColumnDefinition } from "../lib/ai-client";
 import { DynamicAddForm } from "./Add";
 
@@ -43,6 +43,11 @@ export const Dashboard = () => {
     const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
     const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
     const [aiSearchEnabled, setAiSearchEnabled] = useState<boolean>(() => localStorage.getItem("aiSearchEnabled") === "1");
+    const [aiSearchSuggestions, setAiSearchSuggestions] = useState<string[]>([]);
+    const [aiSearchLoading, setAiSearchLoading] = useState<boolean>(false);
+    const aiSearchSeqRef = useRef<number>(0);
+    const aiSearchDebounceRef = useRef<number | undefined>(undefined);
+    const aiSearchCacheRef = useRef(new Map<string, string[]>());
     const [customColumns, setCustomColumns] = useState<ColumnDefinition[]>(stateColumns);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
     const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
@@ -75,6 +80,7 @@ export const Dashboard = () => {
             }
             const data = await response.json();
             setProducts(() => Array.isArray(data) ? data : []);
+            aiSearchCacheRef.current.clear(); // ürünler değişti — öneri cache'i bayat
         } catch (error) {
             console.error("Error fetching products:", error);
         }
@@ -126,6 +132,7 @@ export const Dashboard = () => {
 
     const handleSearch = () => {
         setShowSuggestions(false);
+        cancelAiSuggestions();
     };
 
     const handleInputChange = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -136,8 +143,11 @@ export const Dashboard = () => {
             setShowSuggestions(false);
             setSuggestions([]);
             setHighlightedIndex(-1);
+            cancelAiSuggestions();
             return;
         }
+
+        scheduleAiSuggestions(val);
 
         const parts = val.split(",");
         const currentTerm = parts[parts.length - 1].trim();
@@ -155,9 +165,10 @@ export const Dashboard = () => {
                 console.error("Error fetching suggestions:", err);
             }
         } else {
-            setShowSuggestions(false);
             setSuggestions([]);
             setHighlightedIndex(-1);
+            // AI açıkken sorgu bütünü yeterliyse dropdown açık kalır (AI bölümü için)
+            setShowSuggestions(aiSearchEnabled && val.trim().length >= 3);
         }
     };
 
@@ -166,14 +177,106 @@ export const Dashboard = () => {
         setShowSuggestions(false);
         setSuggestions([]);
         setHighlightedIndex(-1);
+        cancelAiSuggestions();
     };
 
     const handleAiSearchToggle = () => {
-        setAiSearchEnabled(prev => {
-            const next = !prev;
-            localStorage.setItem("aiSearchEnabled", next ? "1" : "0");
-            return next;
-        });
+        const next = !aiSearchEnabled;
+        localStorage.setItem("aiSearchEnabled", next ? "1" : "0");
+        setAiSearchEnabled(next);
+        if (next) {
+            scheduleAiSuggestions(searchTag, true);
+        } else {
+            cancelAiSuggestions();
+        }
+    };
+
+    const cancelAiSuggestions = () => {
+        if (aiSearchDebounceRef.current !== undefined) {
+            clearTimeout(aiSearchDebounceRef.current);
+            aiSearchDebounceRef.current = undefined;
+        }
+        aiSearchSeqRef.current++; // havadaki cevaplar bayat sayılır
+        setAiSearchSuggestions([]);
+        setAiSearchLoading(false);
+    };
+
+    // AI bağlamı: ürün adlarından kısa örneklem (unique, max 100 ad, 60 char truncate)
+    const buildProductNameSample = (): string[] => {
+        const names = new Set<string>();
+        for (const p of products) {
+            const n = (p.name ?? "").trim();
+            if (n) names.add(n.slice(0, 60));
+            if (names.size >= 100) break;
+        }
+        return [...names];
+    };
+
+    // AI bağlamı: custom tag sütunları + legacy category havuzu
+    const buildSearchTagPool = (): Record<string, string[]> => {
+        const pool = buildExistingTags();
+        const categories = new Set<string>();
+        for (const p of products) {
+            if (Array.isArray(p.category)) {
+                p.category.forEach(c => { if (typeof c === "string" && c.trim()) categories.add(c); });
+            }
+        }
+        if (categories.size > 0) pool["kategori"] = [...categories].slice(0, 50);
+        return pool;
+    };
+
+    const scheduleAiSuggestions = (val: string, enabled: boolean = aiSearchEnabled) => {
+        if (aiSearchDebounceRef.current !== undefined) {
+            clearTimeout(aiSearchDebounceRef.current);
+            aiSearchDebounceRef.current = undefined;
+        }
+        aiSearchSeqRef.current++;
+        const query = val.trim();
+        if (!enabled || query.length < 3) {
+            setAiSearchSuggestions([]);
+            setAiSearchLoading(false);
+            return;
+        }
+        const cached = aiSearchCacheRef.current.get(query);
+        if (cached) {
+            setAiSearchSuggestions(cached);
+            setAiSearchLoading(false);
+            setShowSuggestions(true);
+            return;
+        }
+        setAiSearchSuggestions([]);
+        setAiSearchLoading(true);
+        setShowSuggestions(true);
+        const seq = aiSearchSeqRef.current;
+        aiSearchDebounceRef.current = window.setTimeout(async () => {
+            try {
+                const result = await generateSearchSuggestions({
+                    tableName: dashboardName,
+                    columns: customColumns,
+                    productNames: buildProductNameSample(),
+                    existingTags: buildSearchTagPool(),
+                    query,
+                });
+                if (seq !== aiSearchSeqRef.current) return;
+                aiSearchCacheRef.current.set(query, result);
+                setAiSearchSuggestions(result);
+            } catch (err) {
+                if (seq !== aiSearchSeqRef.current) return;
+                console.error("AI arama önerileri alınamadı:", err);
+                setAiSearchSuggestions([]);
+            } finally {
+                if (seq === aiSearchSeqRef.current) setAiSearchLoading(false);
+            }
+        }, 800);
+    };
+
+    // AI önerisi sorgunun tamamını değiştirir (tag tıklaması son parçayı tamamlar)
+    const handleAiSuggestionClick = (s: string) => {
+        setSearchTag(s);
+        setShowSuggestions(false);
+        setSuggestions([]);
+        setHighlightedIndex(-1);
+        cancelAiSuggestions();
     };
 
     const handleSuggestionClick = (suggestion: string) => {
@@ -190,20 +293,27 @@ export const Dashboard = () => {
     };
 
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+        // Klavye navigasyonu birleşik liste üzerinde: önce tag eşleşmeleri, sonra AI önerileri
+        const aiCount = aiSearchEnabled ? aiSearchSuggestions.length : 0;
+        const totalCount = suggestions.length + aiCount;
         if (e.key === 'ArrowDown') {
             e.preventDefault();
-            if (showSuggestions && suggestions.length > 0) {
-                setHighlightedIndex(prev => prev < suggestions.length - 1 ? prev + 1 : prev);
+            if (showSuggestions && totalCount > 0) {
+                setHighlightedIndex(prev => prev < totalCount - 1 ? prev + 1 : prev);
             }
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            if (showSuggestions && suggestions.length > 0) {
+            if (showSuggestions && totalCount > 0) {
                 setHighlightedIndex(prev => prev > 0 ? prev - 1 : 0);
             }
         } else if (e.key === 'Enter') {
             e.preventDefault();
-            if (showSuggestions && highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
-                handleSuggestionClick(suggestions[highlightedIndex]);
+            if (showSuggestions && highlightedIndex >= 0 && highlightedIndex < totalCount) {
+                if (highlightedIndex < suggestions.length) {
+                    handleSuggestionClick(suggestions[highlightedIndex]);
+                } else {
+                    handleAiSuggestionClick(aiSearchSuggestions[highlightedIndex - suggestions.length]);
+                }
             } else {
                 handleSearch();
             }
@@ -377,7 +487,7 @@ export const Dashboard = () => {
                                 <RiDeleteBin6Line size={18} />
                             </button>
                         )}
-                        {showSuggestions && suggestions.length > 0 && (
+                        {showSuggestions && (suggestions.length > 0 || (aiSearchEnabled && (aiSearchLoading || aiSearchSuggestions.length > 0))) && (
                             <ul className="absolute top-full left-0 z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg mt-1 max-h-60 overflow-auto">
                                 {suggestions.map((suggestion, idx) => (
                                     <li
@@ -388,6 +498,26 @@ export const Dashboard = () => {
                                         {suggestion}
                                     </li>
                                 ))}
+                                {aiSearchEnabled && (aiSearchLoading || aiSearchSuggestions.length > 0) && (
+                                    <li className={`px-4 pt-2 pb-1 text-xs font-semibold text-indigo-400 uppercase tracking-wider ${suggestions.length > 0 ? 'border-t border-gray-100' : ''}`}>
+                                        ✨ AI önerileri
+                                    </li>
+                                )}
+                                {aiSearchEnabled && aiSearchLoading && (
+                                    <li className="px-4 py-2 text-sm text-gray-400 italic">öneriler hazırlanıyor…</li>
+                                )}
+                                {aiSearchEnabled && aiSearchSuggestions.map((s, idx) => {
+                                    const combinedIdx = suggestions.length + idx;
+                                    return (
+                                        <li
+                                            key={`ai-${idx}`}
+                                            className={`px-4 py-2 cursor-pointer text-sm text-gray-700 ${combinedIdx === highlightedIndex ? 'bg-indigo-100 font-medium' : 'hover:bg-indigo-50'}`}
+                                            onClick={() => handleAiSuggestionClick(s)}
+                                        >
+                                            ✨ {s}
+                                        </li>
+                                    );
+                                })}
                             </ul>
                         )}
                     </div>
