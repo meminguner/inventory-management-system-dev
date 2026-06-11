@@ -53,7 +53,9 @@ services:
         VITE_AI_API_PROVIDER: ${VITE_AI_API_PROVIDER:-openai}
         VITE_AI_MODEL: ${VITE_AI_MODEL:-gpt-4o-mini}
     ports:
-      - "${WEB_PORT:-3000}:80"
+      # BIND_IP: yayın yapılacak host IP'si — sunucuda Tailscale IP'sine bağlanır
+      # (Docker ufw'yi bypass ettiği için public erişimi böyle engelliyoruz)
+      - "${BIND_IP:-127.0.0.1}:${WEB_PORT:-3000}:80"
     depends_on:
       - api
     restart: unless-stopped
