@@ -42,6 +42,7 @@ export const Dashboard = () => {
     const [suggestions, setSuggestions] = useState<string[]>([]);
     const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
     const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+    const [aiSearchEnabled, setAiSearchEnabled] = useState<boolean>(() => localStorage.getItem("aiSearchEnabled") === "1");
     const [customColumns, setCustomColumns] = useState<ColumnDefinition[]>(stateColumns);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
     const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
@@ -165,6 +166,14 @@ export const Dashboard = () => {
         setShowSuggestions(false);
         setSuggestions([]);
         setHighlightedIndex(-1);
+    };
+
+    const handleAiSearchToggle = () => {
+        setAiSearchEnabled(prev => {
+            const next = !prev;
+            localStorage.setItem("aiSearchEnabled", next ? "1" : "0");
+            return next;
+        });
     };
 
     const handleSuggestionClick = (suggestion: string) => {
@@ -382,6 +391,18 @@ export const Dashboard = () => {
                             </ul>
                         )}
                     </div>
+                    <label className="flex items-center gap-2 shrink-0 cursor-pointer select-none" title="Akıllı AI destekli arama önerileri">
+                        <span className="text-sm font-medium text-gray-600 whitespace-nowrap">✨ AI</span>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={aiSearchEnabled}
+                            onClick={handleAiSearchToggle}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${aiSearchEnabled ? "bg-indigo-600" : "bg-gray-300"}`}
+                        >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${aiSearchEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                        </button>
+                    </label>
                     <button
                         onClick={handleSearch}
                         className="w-full sm:w-auto rounded-lg text-sm px-6 py-2 transition-all bg-indigo-600 text-white hover:bg-indigo-700 font-semibold"
