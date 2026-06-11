@@ -3,6 +3,8 @@ import {
     TABLE_CREATION_POST_PROMPT,
     PRODUCT_ADD_PRE_PROMPT,
     PRODUCT_ADD_POST_PROMPT,
+    SEARCH_SUGGEST_PRE_PROMPT,
+    SEARCH_SUGGEST_POST_PROMPT,
 } from "../config/ai-prompts";
 
 // ─── Tipler ──────────────────────────────────────────────────────────────────
@@ -304,4 +306,60 @@ export async function generateProductFields(input: {
     }
 
     return { fields: obj.fields as ProductFieldsResponse["fields"] };
+}
+
+// ─── Public API: Arama önerileri üret (Görev 4) ──────────────────────────────
+// Autocomplete akışı: parse edilemeyen/biçimsiz cevapta hata fırlatmak yerine
+// boş dizi döner — kullanıcıya hata gösterilmez, bölüm gizlenir.
+// Ağ/timeout hataları yine throw eder; çağıran sessizce loglar.
+
+export async function generateSearchSuggestions(input: {
+    tableName: string;
+    columns: Array<Pick<ColumnDefinition, "name" | "type">>;
+    productNames: string[];
+    existingTags?: Record<string, string[]>;
+    query: string;
+}): Promise<string[]> {
+    const { tableName, columns, productNames, existingTags, query } = input;
+
+    const userText = [
+        SEARCH_SUGGEST_PRE_PROMPT,
+        "",
+        `Tablo adı: "${tableName}"`,
+        `Sütunlar: ${JSON.stringify(columns.map((c) => ({ name: c.name, type: c.type })))}`,
+        `Ürün isimlerinden örneklem: ${JSON.stringify(productNames)}`,
+        existingTags && Object.keys(existingTags).length > 0
+            ? `Etiket havuzu: ${JSON.stringify(existingTags)}`
+            : "",
+        "",
+        `Kullanıcının şu ana kadar yazdığı arama: "${query}"`,
+        "",
+        SEARCH_SUGGEST_POST_PROMPT,
+    ]
+        .filter((l) => l !== "")
+        .join("\n");
+
+    const raw = await callAI("", userText);
+
+    let parsed: unknown;
+    try {
+        parsed = parseAIJson(raw);
+    } catch {
+        return [];
+    }
+
+    const obj = parsed as Record<string, unknown>;
+    if (!Array.isArray(obj.suggestions)) return [];
+
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const s of obj.suggestions as unknown[]) {
+        if (typeof s !== "string") continue;
+        const trimmed = s.trim();
+        if (!trimmed || seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        result.push(trimmed);
+        if (result.length >= 5) break;
+    }
+    return result;
 }

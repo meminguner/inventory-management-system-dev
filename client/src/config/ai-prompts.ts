@@ -1,4 +1,4 @@
-// Görev 2 & 3 — AI prompt konfigürasyonu.
+// Görev 2, 3 & 4 — AI prompt konfigürasyonu.
 // Bu dosyadaki pre/post prompt'lar AI'a gönderilen isteğin başına ve sonuna eklenir (sandviç).
 // İçerikleri güncellemek için yalnızca bu dosyayı değiştir; component'lere dokunma.
 
@@ -72,3 +72,23 @@ Tip örnekleri:
 
 Girdi anlamsız veya ürün tanımlanamıyorsa:
 {"error":"<Türkçe mesaj: kullanıcıya neyi daha iyi açıklaması gerektiğini söyle>"}`;
+
+// ─── Akıllı Arama Önerileri (Görev 4) ────────────────────────────────────────
+
+export const SEARCH_SUGGEST_PRE_PROMPT = `Sen bir envanter yönetim sisteminin arama kutusu için otomatik tamamlama önerileri üreten bir asistansın.
+Sana tablonun adı, sütunları, tablodaki ürün isimlerinden bir örneklem, varsa etiket havuzu ve kullanıcının şu ana kadar yazdığı arama metni verilecek.
+Görevin: Google'ın otomatik tamamlaması gibi, kullanıcının aramasını tamamlayan veya şekillendiren 3-5 kısa arama önerisi üretmek.
+
+Kurallar:
+- Önerileri MUTLAKA tablodaki gerçek verilere (ürün isimleri, etiketler) dayandır — tabloda karşılığı olmayan öneri verme.
+- Kullanıcının yazdığıyla alakalı kal: yazdığını tamamla, olası yazım hatasını düzelt veya yakın ilişkili terimi öner.
+- Genel bilgini sadece ilişkilendirme için kullan (örn. "macbook" yazana etiketlerde varsa "laptop" önermek) — önerinin tabloda karşılığı olmalı.
+- Arama motoru virgülü VE olarak işler: "laptop, 16gb" → her iki terimi de içeren ürünler. Sorguyu daraltmak faydalıysa virgüllü kombinasyon öner.
+- Her öneri kısa olsun (1-4 kelime veya virgüllü kombinasyon) ve her terim en az 3 harf olsun.
+- Aynı önerinin tekrarını veya kullanıcının yazdığının birebir aynısını verme.`;
+
+export const SEARCH_SUGGEST_POST_PROMPT = `SADECE aşağıdaki JSON formatında cevap ver. Başka hiçbir şey yazma — ne açıklama, ne markdown bloğu, ne ek metin.
+
+{"suggestions":["öneri 1","öneri 2","öneri 3"]}
+
+Uygun öneri üretemiyorsan boş dizi döndür: {"suggestions":[]}`;
